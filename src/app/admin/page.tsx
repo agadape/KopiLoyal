@@ -20,7 +20,7 @@ export default function AdminPage() {
 
   const cafeIdBig = BigInt(cafeIdInput || "0");
 
-  const { data: cafeData, refetch: refetchCafe } = useReadContract({
+  const { data: cafeData, refetch: refetchCafe, isFetching: isRefetchingCafe } = useReadContract({
     address: KOPILOYALTY_ADDRESS,
     abi: KOPILOYALTY_ABI,
     functionName: "getCafe",
@@ -101,8 +101,10 @@ export default function AdminPage() {
           />
           <button
             onClick={() => refetchCafe()}
-            className="bg-latte text-espresso px-4 rounded-xl font-medium text-sm"
+            disabled={isRefetchingCafe}
+            className="bg-latte text-espresso px-4 rounded-xl font-medium text-sm disabled:opacity-60 flex items-center gap-1"
           >
+            {isRefetchingCafe && <Loader2 size={12} className="animate-spin" />}
             Cek
           </button>
         </div>

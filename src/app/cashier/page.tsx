@@ -6,7 +6,8 @@ import { isAddress } from "viem";
 import { toast } from "sonner";
 import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert, Coins } from "lucide-react";
 import Link from "next/link";
-import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, DEFAULT_CAFE_ID } from "@/lib/contract";
+import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS } from "@/lib/contract";
+import { CAFE_ID } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import { logTransaction } from "@/lib/supabase";
 
@@ -33,7 +34,7 @@ export default function CashierPage() {
     address: KOPILOYALTY_ADDRESS,
     abi: KOPILOYALTY_ABI,
     functionName: "getCafe",
-    args: [DEFAULT_CAFE_ID],
+    args: [CAFE_ID],
     query: { enabled: isConnected && !!address },
   });
 
@@ -47,7 +48,7 @@ export default function CashierPage() {
     address: KOPILOYALTY_ADDRESS,
     abi: KOPILOYALTY_ABI,
     functionName: "getMintablePoints",
-    args: [DEFAULT_CAFE_ID],
+    args: [CAFE_ID],
     query: { enabled: isConnected && !!address },
   });
 
@@ -65,11 +66,11 @@ export default function CashierPage() {
         address: KOPILOYALTY_ADDRESS,
         abi: KOPILOYALTY_ABI,
         functionName: "mintPoints",
-        args: [DEFAULT_CAFE_ID, customerAddress as `0x${string}`, BigInt(earnedPoints)],
+        args: [CAFE_ID, customerAddress as `0x${string}`, BigInt(earnedPoints)],
       });
       await publicClient!.waitForTransactionReceipt({ hash });
       await logTransaction({
-        cafe_id: String(DEFAULT_CAFE_ID),
+        cafe_id: String(CAFE_ID),
         cafe_name: CAFE_NAME,
         customer_address: customerAddress,
         type: "earn",
