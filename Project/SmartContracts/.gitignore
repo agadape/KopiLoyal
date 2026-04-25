@@ -1,0 +1,10 @@
+# Foundry
+/out
+/cache
+/broadcast
+/lib
+.env
+
+# Coverage
+lcov.info
+coverage/
