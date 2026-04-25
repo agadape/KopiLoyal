@@ -15,6 +15,9 @@ const NAV_ITEMS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const isOperatorRoute = pathname === "/admin" || pathname === "/cashier";
+
+  if (isOperatorRoute) return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 flex justify-center z-50">

@@ -105,7 +105,7 @@ export default function PaymentPage() {
         if (!payload) return;
 
         setMerchantQr(payload);
-        toast.success(`Scanned ${payload.cafeName}.`);
+        toast.success(`Scanned cafe ID ${payload.cafeId}.`);
         stopScanner();
       });
     } catch (error) {
@@ -135,7 +135,7 @@ export default function PaymentPage() {
     try {
       const created = await createPaymentSession({
         cafe_id: String(merchantQr.cafeId),
-        cafe_name: merchantQr.cafeName,
+        cafe_name: CAFE_NAME,
         customer_address: address,
         status: "pending",
       });
@@ -292,10 +292,10 @@ export default function PaymentPage() {
 
           {merchantQr ? (
             <div className="text-center">
-              <p className="font-bold text-espresso text-lg">{merchantQr.cafeName}</p>
+              <p className="font-bold text-espresso text-lg">{CAFE_NAME}</p>
               <div className="flex items-center justify-center gap-1 mt-1">
                 <MapPin size={11} className="text-mocha" />
-                <p className="text-xs text-mocha">{merchantQr.location ?? "Merchant QR scanned"}</p>
+                <p className="text-xs text-mocha">{CAFE_LOCATION}</p>
               </div>
               <p className="text-2xs text-mocha/70 mt-3">Cafe ID {merchantQr.cafeId}</p>
               <button
