@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { toast } from "sonner";
-import { ChevronLeft, CheckCircle, Coins, Loader2, Shield, MapPin, ScanLine, CameraOff } from "lucide-react";
+import { ChevronLeft, CheckCircle, Coins, Loader2, Shield, MapPin, ScanLine, CameraOff, Camera } from "lucide-react";
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, CAFE_LOCATION, BURN_RATE_IDR } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
@@ -13,7 +13,7 @@ import { parseMerchantQrPayload, type MerchantQrPayload } from "@/lib/merchantQr
 
 type ScannerState = "idle" | "starting" | "active";
 type CameraHandle = { stop: () => void; readFrame: (canvas: unknown, fullSize?: boolean) => string | undefined };
-type FrameCancel = () => void;
+type QRCanvasHandle = { clear: () => void };
 
 export default function PaymentPage() {
   const { address, isConnected } = useAccount();
@@ -21,7 +21,7 @@ export default function PaymentPage() {
   const { writeContractAsync } = useWriteContract();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraRef = useRef<CameraHandle | null>(null);
-  const cancelLoopRef = useRef<FrameCancel | null>(null);
+  const canvasRef = useRef<QRCanvasHandle | null>(null);
 
   const { balance: pointBalance, pointsTokenId, isLoading: pointsLoading } = useCafePoints(
     address as `0x${string}` | undefined
@@ -75,10 +75,10 @@ export default function PaymentPage() {
   const canRedeemForScannedCafe = merchantQr?.cafeId === Number(CAFE_ID);
 
   function stopScanner() {
-    cancelLoopRef.current?.();
-    cancelLoopRef.current = null;
     cameraRef.current?.stop();
     cameraRef.current = null;
+    canvasRef.current?.clear();
+    canvasRef.current = null;
     setScannerState("idle");
   }
 
@@ -90,29 +90,41 @@ export default function PaymentPage() {
     setScannerError(null);
 
     try {
-      const [{ QRCanvas, frontalCamera, frameLoop }] = await Promise.all([import("qr/dom.js")]);
+      const [{ QRCanvas, frontalCamera }] = await Promise.all([import("qr/dom.js")]);
       const camera = await frontalCamera(videoRef.current);
       const canvas = new QRCanvas();
 
       cameraRef.current = camera as CameraHandle;
+      canvasRef.current = canvas as QRCanvasHandle;
       setScannerState("active");
-
-      cancelLoopRef.current = frameLoop(() => {
-        const raw = camera.readFrame(canvas);
-        if (!raw) return;
-
-        const payload = parseMerchantQrPayload(raw);
-        if (!payload) return;
-
-        setMerchantQr(payload);
-        toast.success(`Scanned cafe ID ${payload.cafeId}.`);
-        stopScanner();
-      });
     } catch (error) {
       console.error(error);
       setScannerState("idle");
       setScannerError("Camera access failed. You can try again.");
     }
+  }
+
+  async function captureScan() {
+    if (!cameraRef.current || !canvasRef.current) {
+      toast.error("Start the camera first.");
+      return;
+    }
+
+    const raw = cameraRef.current.readFrame(canvasRef.current);
+    if (!raw) {
+      toast.error("Could not read QR. Center it and try again.");
+      return;
+    }
+
+    const payload = parseMerchantQrPayload(raw);
+    if (!payload) {
+      toast.error("QR not recognized. Try again.");
+      return;
+    }
+
+    setMerchantQr(payload);
+    toast.success(`Scanned cafe ID ${payload.cafeId}.`);
+    stopScanner();
   }
 
   function clearScan() {
@@ -246,25 +258,36 @@ export default function PaymentPage() {
               <p className="text-sm font-semibold text-espresso">Scan Merchant QR</p>
               <p className="text-xs text-mocha mt-1">Scan the QR shown by the cafe owner or cashier.</p>
             </div>
-            {scannerState === "active" ? (
-              <button
-                onClick={stopScanner}
-                className="shrink-0 px-3 py-2 rounded-xl bg-latte text-espresso text-xs font-semibold"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={startScanner}
-                className="shrink-0 px-3 py-2 rounded-xl bg-espresso text-white text-xs font-semibold flex items-center gap-2"
-              >
-                {scannerState === "starting" ? <Loader2 size={14} className="animate-spin" /> : <ScanLine size={14} />}
-                {scannerState === "starting" ? "Starting..." : "Scan"}
-              </button>
-            )}
+            <div className="flex gap-2">
+              {scannerState === "active" ? (
+                <>
+                  <button
+                    onClick={captureScan}
+                    className="shrink-0 px-3 py-2 rounded-xl bg-espresso text-white text-xs font-semibold flex items-center gap-2"
+                  >
+                    <Camera size={14} />
+                    Capture
+                  </button>
+                  <button
+                    onClick={stopScanner}
+                    className="shrink-0 px-3 py-2 rounded-xl bg-latte text-espresso text-xs font-semibold"
+                  >
+                    Stop
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={startScanner}
+                  className="shrink-0 px-3 py-2 rounded-xl bg-espresso text-white text-xs font-semibold flex items-center gap-2"
+                >
+                  {scannerState === "starting" ? <Loader2 size={14} className="animate-spin" /> : <ScanLine size={14} />}
+                  {scannerState === "starting" ? "Starting..." : "Scan"}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="rounded-2xl overflow-hidden bg-neutral-950 aspect-square flex items-center justify-center">
+          <div className="relative rounded-2xl overflow-hidden bg-neutral-950 aspect-square flex items-center justify-center border border-white/10">
             {scannerState === "idle" && (
               <div className="text-center px-6">
                 <CameraOff size={22} className="text-white/70 mx-auto mb-2" />
@@ -278,6 +301,11 @@ export default function PaymentPage() {
               muted
               className={`w-full h-full object-cover ${scannerState === "idle" ? "hidden" : "block"}`}
             />
+            {scannerState === "active" && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-52 h-52 rounded-3xl border-2 border-white/70 shadow-[0_0_0_999px_rgba(0,0,0,0.28)]" />
+              </div>
+            )}
           </div>
 
           {scannerError && (
