@@ -69,9 +69,9 @@ export default function ProfilePage() {
   }
 
   const badgeBalances = [
-    { owned: Boolean((badges >> 0) & 1), tokenId: getBadgeTokenId(0) },
-    { owned: Boolean((badges >> 1) & 1), tokenId: getBadgeTokenId(1) },
-    { owned: Boolean((badges >> 2) & 1), tokenId: getBadgeTokenId(2) },
+    { owned: Boolean((claimedBadges >> 0) & 1), tokenId: getBadgeTokenId(0) },
+    { owned: Boolean((claimedBadges >> 1) & 1), tokenId: getBadgeTokenId(1) },
+    { owned: Boolean((claimedBadges >> 2) & 1), tokenId: getBadgeTokenId(2) },
   ];
 
   async function handleClaimRefund() {
@@ -116,18 +116,6 @@ export default function ProfilePage() {
   }, [address]);
 
   const visits = visitCount ? Number(visitCount) : 0;
-  const badges = claimedBadges ? Number(claimedBadges) : 0;
-
-  function getBadgeTokenId(tier: number) {
-    const padded = toHex("KL_BADGE", { size: 32 });
-    return keccak256(encodePacked(["bytes32", "uint256", "uint8"], [padded, CAFE_ID, tier]));
-  }
-
-  const badgeBalances = [
-    { owned: Boolean((badges >> 0) & 1), tokenId: getBadgeTokenId(0) },
-    { owned: Boolean((badges >> 1) & 1), tokenId: getBadgeTokenId(1) },
-    { owned: Boolean((badges >> 2) & 1), tokenId: getBadgeTokenId(2) },
-  ];
 
   const nextBadge = BADGE_TIERS.find((badge) => visits < badge.visits);
   const progress = nextBadge ? Math.round((visits / nextBadge.visits) * 100) : 100;
