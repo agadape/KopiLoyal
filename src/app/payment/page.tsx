@@ -7,7 +7,7 @@ import { ChevronLeft, CheckCircle, Info, Coins, Loader2, Shield, MapPin, ScanLin
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, CAFE_LOCATION, BURN_RATE_IDR } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
-import { logTransaction } from "@/lib/supabase";
+import { createPaymentSession, getLatestPaymentSession, logTransaction, supabase, type PaymentSessionRow } from "@/lib/supabase";
 import { useCafePoints } from "@/hooks/useCafePoints";
 import { parseMerchantQrPayload, type MerchantQrPayload } from "@/lib/merchantQr";
 
@@ -35,10 +35,40 @@ export default function PaymentPage() {
   const [scannerState, setScannerState] = useState<ScannerState>("idle");
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [merchantQr, setMerchantQr] = useState<MerchantQrPayload | null>(null);
+  const [session, setSession] = useState<PaymentSessionRow | null>(null);
+  const [sessionPending, setSessionPending] = useState(false);
 
   useEffect(() => {
     return () => stopScanner();
   }, []);
+
+  useEffect(() => {
+    if (!address) {
+      setSession(null);
+      return;
+    }
+
+    const refreshSession = () => {
+      getLatestPaymentSession(address, String(CAFE_ID))
+        .then(setSession)
+        .catch(console.error);
+    };
+
+    refreshSession();
+
+    const channel = supabase
+      .channel(`customer-payment-sessions-${address.toLowerCase()}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "payment_sessions" },
+        () => refreshSession()
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [address]);
 
   const maxPoints = pointBalance ?? 0;
   const discount = pointsToRedeem * BURN_RATE_IDR;
@@ -89,6 +119,34 @@ export default function PaymentPage() {
     setMerchantQr(null);
     setUsePoints(false);
     setPointsToRedeem(0);
+  }
+
+  async function handleCheckIn() {
+    if (!address || !merchantQr) {
+      toast.error("Scan the merchant QR first.");
+      return;
+    }
+    if (!canRedeemForScannedCafe) {
+      toast.error("This QR is not for the configured cafe.");
+      return;
+    }
+
+    setSessionPending(true);
+    try {
+      const created = await createPaymentSession({
+        cafe_id: String(merchantQr.cafeId),
+        cafe_name: merchantQr.cafeName,
+        customer_address: address,
+        status: "pending",
+      });
+      setSession(created);
+      toast.success("Payment session sent to cashier.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to create payment session.");
+    } finally {
+      setSessionPending(false);
+    }
   }
 
   async function handleRedeem() {
@@ -259,9 +317,39 @@ export default function PaymentPage() {
           <Info size={15} className="text-[#F9A825] mt-0.5 shrink-0" />
           <p className="text-xs text-[#7B6000] leading-relaxed">
             <span className="font-semibold">Flow revision applied.</span>
-            {" "}Customers now scan the merchant QR. The merchant QR identifies the cafe, then this screen handles any point redemption.
+            {" "}Customers now scan the merchant QR, send a payment session to cashier, then optionally redeem points from this screen.
           </p>
         </div>
+
+        {merchantQr && canRedeemForScannedCafe && isConnected && (
+          <div className="bg-white rounded-2xl p-5 shadow-card">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-espresso">Send to Cashier</p>
+                <p className="text-xs text-mocha mt-1">Create a pending session so the cashier can see your wallet.</p>
+              </div>
+              <button
+                onClick={handleCheckIn}
+                disabled={sessionPending}
+                className="px-4 py-3 rounded-2xl bg-espresso text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
+              >
+                {sessionPending && <Loader2 size={16} className="animate-spin" />}
+                {sessionPending ? "Sending..." : "I'm Paying"}
+              </button>
+            </div>
+
+            {session && session.status === "pending" && (
+              <p className="text-xs text-earn-green mt-3">
+                Session pending. Cashier should now see your wallet in the queue.
+              </p>
+            )}
+            {session && session.status === "completed" && (
+              <p className="text-xs text-earn-green mt-3">
+                Cashier already completed your latest session.
+              </p>
+            )}
+          </div>
+        )}
 
         {isConnected && (
           <div className="bg-white rounded-2xl px-5 py-4 shadow-card">

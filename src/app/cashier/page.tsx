@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import encodeQR from "qr";
 import { useAccount, useReadContract, usePublicClient, useWriteContract } from "wagmi";
 import { isAddress } from "viem";
@@ -9,7 +9,7 @@ import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert, QrCode, Store }
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, DEFAULT_CAFE_ID } from "@/lib/contract";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
-import { logTransaction } from "@/lib/supabase";
+import { listPendingPaymentSessions, logTransaction, supabase, updatePaymentSession, type PaymentSessionRow } from "@/lib/supabase";
 import { CAFE_LOCATION, CAFE_NAME } from "@/lib/cafeConfig";
 import { createMerchantQrPayload, serializeMerchantQrPayload } from "@/lib/merchantQr";
 
@@ -25,6 +25,8 @@ export default function CashierPage() {
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [mintedPoints, setMintedPoints] = useState(0);
+  const [pendingSessions, setPendingSessions] = useState<PaymentSessionRow[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
 
   const bill = parseInt(billAmount.replace(/\D/g, "") || "0");
   const earnedPoints = Math.floor(bill / EARN_RATE);
@@ -56,6 +58,35 @@ export default function CashierPage() {
     ? cafeData[0].toLowerCase() === address.toLowerCase()
     : null;
 
+  useEffect(() => {
+    function fetchSessions() {
+      setSessionsLoading(true);
+      listPendingPaymentSessions(String(DEFAULT_CAFE_ID))
+        .then(setPendingSessions)
+        .catch(console.error)
+        .finally(() => setSessionsLoading(false));
+    }
+
+    fetchSessions();
+
+    const channel = supabase
+      .channel(`payment-sessions-${String(DEFAULT_CAFE_ID)}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "payment_sessions" },
+        () => fetchSessions()
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  function handleSelectSession(session: PaymentSessionRow) {
+    setCustomerAddress(session.customer_address);
+  }
+
   async function handleMint() {
     if (!isConnected || !address) { toast.error("Connect wallet dulu."); return; }
     if (!validAddress) { toast.error("Alamat pelanggan tidak valid."); return; }
@@ -79,6 +110,16 @@ export default function CashierPage() {
         idr_amount: bill,
         tx_hash: hash,
       });
+      const selectedSession = pendingSessions.find(
+        (session) => session.customer_address.toLowerCase() === customerAddress.toLowerCase()
+      );
+      if (selectedSession) {
+        await updatePaymentSession(selectedSession.id, {
+          status: "completed",
+          bill_amount: bill,
+          mint_tx_hash: hash,
+        });
+      }
       setMintedPoints(earnedPoints);
       setTxHash(hash);
       toast.success(`+${earnedPoints} poin dikirim ke pelanggan!`);
@@ -169,6 +210,49 @@ export default function CashierPage() {
             <p className="font-semibold text-espresso">{CAFE_NAME}</p>
             <p className="text-xs text-mocha mt-1">{CAFE_LOCATION}</p>
             <p className="text-2xs text-mocha/70 mt-2">Cafe ID {String(DEFAULT_CAFE_ID)}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-latte flex items-center justify-center">
+              <Store size={18} className="text-coffee" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-espresso">Pending Customers</p>
+              <p className="text-xs text-brown/60">Customers who scanned QR and tapped “I'm Paying”.</p>
+            </div>
+          </div>
+
+          {sessionsLoading && (
+            <div className="flex items-center gap-2 text-sm text-mocha">
+              <Loader2 size={16} className="animate-spin text-coffee" />
+              <span>Loading sessions...</span>
+            </div>
+          )}
+
+          {!sessionsLoading && pendingSessions.length === 0 && (
+            <p className="text-sm text-mocha">Belum ada customer pending.</p>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {pendingSessions.map((session) => {
+              const active = session.customer_address.toLowerCase() === customerAddress.toLowerCase();
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => handleSelectSession(session)}
+                  className={`w-full text-left rounded-2xl px-4 py-3 border transition-colors ${active ? "border-espresso bg-latte" : "border-cream bg-white"}`}
+                >
+                  <p className="text-sm font-semibold text-espresso font-mono">
+                    {session.customer_address.slice(0, 10)}...{session.customer_address.slice(-4)}
+                  </p>
+                  <p className="text-2xs text-mocha mt-1">
+                    {new Date(session.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
