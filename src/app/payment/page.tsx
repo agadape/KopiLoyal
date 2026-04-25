@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { toast } from "sonner";
-import { Coffee, ChevronLeft, CheckCircle, Info } from "lucide-react";
+import { ChevronLeft, CheckCircle, Info, Coins, Loader2, Shield, MapPin } from "lucide-react";
 import Link from "next/link";
-import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, BURN_RATE_IDR } from "@/lib/cafeConfig";
+import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, CAFE_LOCATION, BURN_RATE_IDR } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import { logTransaction } from "@/lib/supabase";
 import { useCafePoints } from "@/hooks/useCafePoints";
@@ -29,9 +29,9 @@ export default function PaymentPage() {
   const discount = pointsToRedeem * BURN_RATE_IDR;
 
   async function handleRedeem() {
-    if (!isConnected || !address) { toast.error("Connect wallet dulu ya."); return; }
-    if (pointsToRedeem === 0) { toast.error("Pilih jumlah poin yang mau ditukar."); return; }
-    if (pointsTokenId === undefined) { toast.error("Data cafe belum dimuat. Coba lagi."); return; }
+    if (!isConnected || !address) { toast.error("Connect your wallet first."); return; }
+    if (pointsToRedeem === 0) { toast.error("Select points to redeem."); return; }
+    if (pointsTokenId === undefined) { toast.error("Cafe data not loaded. Try again."); return; }
 
     setIsPending(true);
     try {
@@ -50,7 +50,7 @@ export default function PaymentPage() {
       });
       setRedeemedPoints(pointsToRedeem);
       setTxHash(hash);
-      toast.success(`${pointsToRedeem} poin berhasil ditukar!`);
+      toast.success(`${pointsToRedeem} points redeemed!`);
       try {
         await logTransaction({
           cafe_id: String(CAFE_ID),
@@ -62,121 +62,156 @@ export default function PaymentPage() {
           tx_hash: hash,
         });
       } catch {
-        toast.warning("Transaksi berhasil, tapi gagal tersimpan ke riwayat.");
+        toast.warning("Transaction saved, but history sync failed.");
       }
     } catch (err) {
       const e = parseContractError(err);
       if (e.code !== KopiErrorCode.USER_REJECTED) toast.error(e.userMessage);
-      console.error(e.devMessage, e.raw);
     } finally {
       setIsPending(false);
     }
   }
 
+  // ── Success state ──
   if (txHash) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen px-5 text-center gap-5">
-        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center">
-          <CheckCircle size={40} className="text-green-600" />
+      <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-6 bg-latte-light">
+        <div className="w-24 h-24 bg-earn-light rounded-full flex items-center justify-center shadow-card">
+          <CheckCircle size={44} className="text-earn-green" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-espresso">Poin Berhasil Ditukar!</h2>
-          <p className="text-brown/60 text-sm mt-1">
-            -{redeemedPoints} poin - hemat Rp {(redeemedPoints * BURN_RATE_IDR).toLocaleString("id-ID")}
+          <h2 className="text-2xl font-bold text-espresso">Points Redeemed!</h2>
+          <p className="text-mocha text-sm mt-1">
+            -{redeemedPoints} pts · saved Rp {(redeemedPoints * BURN_RATE_IDR).toLocaleString("id-ID")}
           </p>
         </div>
         <a
           href={`https://explorer.monad.xyz/tx/${txHash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-mocha font-mono underline underline-offset-2 break-all"
+          className="text-xs text-coffee font-mono underline underline-offset-2 break-all px-4"
         >
-          {txHash.slice(0, 18)}...{txHash.slice(-8)}
+          {txHash.slice(0, 20)}...{txHash.slice(-8)}
         </a>
         <div className="flex gap-3 w-full">
           <button
             onClick={() => { setTxHash(null); setUsePoints(false); setPointsToRedeem(0); }}
-            className="flex-1 bg-espresso text-white px-8 py-3 rounded-2xl font-semibold"
+            className="flex-1 bg-espresso text-white py-3.5 rounded-2xl font-semibold text-sm"
           >
-            Selesai
+            Done
           </button>
-          <Link href="/history" className="flex-1 bg-latte text-espresso px-8 py-3 rounded-2xl font-semibold text-center">
-            Riwayat
+          <Link href="/history" className="flex-1 bg-latte text-espresso py-3.5 rounded-2xl font-semibold text-sm text-center">
+            History
           </Link>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col min-h-screen">
-      <div className="bg-espresso text-white px-5 pt-12 pb-6 rounded-b-3xl">
-        <div className="flex items-center gap-3 mb-5">
-          <Link href="/" className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
-            <ChevronLeft size={18} />
-          </Link>
-          <h1 className="font-semibold">Bayar &amp; Redeem Poin</h1>
-        </div>
+  // ── QR pattern (deterministic) ──
+  const qrCells = Array.from({ length: 100 }).map((_, i) => {
+    const row = Math.floor(i / 10);
+    const col = i % 10;
+    // Corner finder patterns
+    if ((row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3)) return true;
+    const seed = address ? parseInt(address.slice(2 + (i % 38), 4 + (i % 38)), 16) : i * 37;
+    return (seed ^ (i * 13)) % 2 === 0;
+  });
 
-        {/* Address QR for cashier to scan */}
-        <div className="bg-white rounded-2xl p-5 text-center mx-2">
-          <div className="flex items-center gap-2 justify-center mb-3">
-            <Coffee size={16} className="text-espresso" />
-            <span className="text-espresso font-semibold text-sm">{CAFE_NAME}</span>
-          </div>
-          <div className="w-40 h-40 mx-auto bg-espresso/5 rounded-xl flex items-center justify-center border-2 border-dashed border-espresso/20">
-            <div className="grid grid-cols-7 gap-px w-28 h-28">
-              {Array.from({ length: 49 }).map((_, i) => {
-                const seed = address ? parseInt(address.slice(2 + (i % 20), 4 + (i % 20)), 16) : i * 37;
-                const filled = (seed ^ (i * 13)) % 2 === 0;
-                return (
-                  <div key={i} className={`rounded-sm ${filled ? "bg-espresso" : "bg-transparent"}`} />
-                );
-              })}
-            </div>
-          </div>
-          <p className="text-xs text-brown/50 mt-2">
-            {isConnected && address ? `${address.slice(0, 10)}...` : "Connect wallet untuk QR"}
-          </p>
-        </div>
+  return (
+    <div className="flex flex-col min-h-screen bg-latte-light">
+      {/* ── Header ── */}
+      <div className="bg-white px-5 pt-12 pb-4 flex items-center gap-3">
+        <Link href="/" className="w-9 h-9 rounded-full bg-latte flex items-center justify-center">
+          <ChevronLeft size={20} className="text-coffee" />
+        </Link>
+        <h1 className="font-semibold text-espresso text-base">Payment</h1>
       </div>
 
-      <div className="px-5 py-6 flex flex-col gap-4">
-        {/* Cashier-only notice */}
-        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-3">
-          <Info size={16} className="text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-700">
-            <span className="font-semibold">Penambahan poin dilakukan oleh kasir cafe.</span>
-            {" "}Tunjukkan QR di atas ke kasir saat bayar. Kasir akan mint poin ke wallet kamu.
-          </p>
-        </div>
+      <div className="px-4 py-5 flex flex-col gap-4 pb-24">
+        {/* ── Cafe info + QR ── */}
+        <div className="bg-white rounded-3xl p-6 shadow-card text-center">
+          {/* Cafe logo */}
+          <div className="w-16 h-16 rounded-full bg-espresso flex items-center justify-center mx-auto mb-3 shadow-hero">
+            <span className="text-white font-bold text-lg">KT</span>
+          </div>
+          <p className="font-bold text-espresso text-lg">{CAFE_NAME}</p>
+          <div className="flex items-center justify-center gap-1 mt-1 mb-5">
+            <MapPin size={11} className="text-mocha" />
+            <p className="text-xs text-mocha">{CAFE_LOCATION}</p>
+          </div>
 
-        {/* Points balance */}
-        <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
-          <p className="text-xs text-brown/60 mb-1">Poin kamu saat ini</p>
-          {!isConnected ? (
-            <p className="text-2xl font-bold text-espresso/30">--</p>
-          ) : pointsLoading ? (
-            <p className="text-sm text-brown/50">Memuat...</p>
-          ) : (
-            <p className="text-2xl font-bold text-espresso">{maxPoints.toLocaleString("id-ID")} pts</p>
+          {/* QR Code */}
+          <div className="w-52 h-52 mx-auto bg-white border-2 border-latte rounded-2xl p-3 shadow-card relative">
+            <div className="grid grid-cols-10 gap-px w-full h-full">
+              {qrCells.map((filled, i) => (
+                <div
+                  key={i}
+                  className={`rounded-sm ${filled ? "bg-espresso" : "bg-transparent"}`}
+                />
+              ))}
+            </div>
+            {/* Center logo overlay */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm border border-cream">
+                <Coins size={18} className="text-gold" />
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-mocha mt-4">
+            {isConnected && address
+              ? `Scan this QR to pay`
+              : "Connect wallet to generate QR"}
+          </p>
+          {isConnected && address && (
+            <p className="text-2xs text-mocha/60 mt-1 font-mono">{address.slice(0, 14)}...</p>
           )}
         </div>
 
-        {/* Redeem toggle */}
+        {/* ── Cashier notice ── */}
+        <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-2xl p-4 flex items-start gap-3">
+          <Info size={15} className="text-[#F9A825] mt-0.5 shrink-0" />
+          <p className="text-xs text-[#7B6000] leading-relaxed">
+            <span className="font-semibold">Points are added by the cashier.</span>
+            {" "}Show this QR when paying. The cashier will mint points to your wallet.
+          </p>
+        </div>
+
+        {/* ── Points balance ── */}
+        {isConnected && (
+          <div className="bg-white rounded-2xl px-5 py-4 shadow-card">
+            <p className="text-xs text-mocha font-medium mb-0.5">Your Balance</p>
+            {pointsLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin text-coffee" />
+                <span className="text-sm text-mocha">Loading...</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-espresso">{maxPoints.toLocaleString("id-ID")}</span>
+                <Coins size={18} className="text-gold" />
+                <span className="text-sm text-mocha">points</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Redeem toggle ── */}
         {isConnected && maxPoints > 0 && (
-          <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
+          <div className="bg-white rounded-2xl p-5 shadow-card">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-espresso">Tukar Poin sekarang</span>
+              <p className="text-sm font-semibold text-espresso">Use Points Now</p>
               <button
                 onClick={() => { setUsePoints(!usePoints); setPointsToRedeem(0); }}
-                className={`w-11 h-6 rounded-full transition-colors ${usePoints ? "bg-espresso" : "bg-cream"}`}
+                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${usePoints ? "bg-espresso" : "bg-cream"}`}
               >
-                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${usePoints ? "translate-x-5" : "translate-x-0"}`} />
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${usePoints ? "translate-x-6" : "translate-x-0.5"}`} />
               </button>
             </div>
+
             {usePoints && (
-              <div>
+              <div className="mt-1">
                 <input
                   type="range"
                   min={0}
@@ -184,17 +219,21 @@ export default function PaymentPage() {
                   step={Math.max(1, Math.floor(maxPoints / 20))}
                   value={pointsToRedeem}
                   onChange={(e) => setPointsToRedeem(Number(e.target.value))}
-                  className="w-full accent-espresso"
+                  className="w-full"
+                  style={{
+                    background: `linear-gradient(to right, #2E7D32 ${(pointsToRedeem / maxPoints) * 100}%, #EDD9C0 0%)`
+                  }}
                 />
-                <div className="flex justify-between text-xs text-brown/60 mt-1">
+                <div className="flex justify-between text-2xs text-mocha mt-2">
                   <span>0</span>
-                  <span className="font-semibold text-espresso">{pointsToRedeem.toLocaleString("id-ID")} poin</span>
+                  <span className="font-semibold text-espresso">{pointsToRedeem.toLocaleString("id-ID")} pts</span>
                   <span>{maxPoints.toLocaleString("id-ID")}</span>
                 </div>
                 {pointsToRedeem > 0 && (
-                  <p className="text-xs text-green-600 mt-2 font-medium">
-                    Hemat Rp {discount.toLocaleString("id-ID")}
-                  </p>
+                  <div className="mt-3 bg-earn-light rounded-xl px-4 py-2.5 flex items-center justify-between">
+                    <span className="text-xs text-earn-green font-medium">You save</span>
+                    <span className="text-sm font-bold text-earn-green">Rp {discount.toLocaleString("id-ID")}</span>
+                  </div>
                 )}
               </div>
             )}
@@ -205,11 +244,18 @@ export default function PaymentPage() {
           <button
             onClick={handleRedeem}
             disabled={isPending}
-            className="bg-espresso text-white rounded-2xl py-4 font-semibold disabled:opacity-50"
+            className="w-full bg-espresso text-white rounded-2xl py-4 font-semibold text-sm shadow-float disabled:opacity-60 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           >
-            {isPending ? "Memproses..." : `Tukar ${pointsToRedeem.toLocaleString("id-ID")} Poin`}
+            {isPending && <Loader2 size={18} className="animate-spin" />}
+            {isPending ? "Processing..." : `Redeem ${pointsToRedeem.toLocaleString("id-ID")} Points`}
           </button>
         )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-center gap-2 py-2">
+          <Shield size={12} className="text-mocha/60" />
+          <p className="text-2xs text-mocha/60">Secure payment powered by KopiLoyalty</p>
+        </div>
       </div>
     </div>
   );
