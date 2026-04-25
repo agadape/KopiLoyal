@@ -5,24 +5,58 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { CAFE_NAME, CAFE_LOCATION } from "@/lib/cafeConfig";
 import { useCafePoints } from "@/hooks/useCafePoints";
-import { getTransactions, getUserProfile, type TransactionRow } from "@/lib/supabase";
 import {
-  Bell, MapPin, QrCode, ChevronRight,
-  TrendingUp, TrendingDown, Coins, Loader2, Star
+  getTransactions,
+  getUserProfile,
+  type TransactionRow,
+} from "@/lib/supabase";
+import {
+  Bell,
+  MapPin,
+  QrCode,
+  ChevronRight,
+  TrendingUp,
+  TrendingDown,
+  Coins,
+  Loader2,
+  Star,
 } from "lucide-react";
 import Link from "next/link";
 
 const DEMO_CAFES = [
-  { id: 1, name: "Kopi Tugu Jogja", location: "Malioboro", dist: "140 m", rating: 4.8, color: "from-[#4a2c1a] to-[#8B5E3C]" },
-  { id: 2, name: "Filosofi Kopi",   location: "Melawai",   dist: "350 m", rating: 4.7, color: "from-[#1a3a2c] to-[#2E7D32]" },
-  { id: 3, name: "Epic Coffee",     location: "Senopati",  dist: "650 m", rating: 4.6, color: "from-[#1a1a3a] to-[#3a3a6a]" },
+  {
+    id: 1,
+    name: "Kopi Tugu Jogja",
+    location: "Malioboro",
+    dist: "140 m",
+    rating: 4.8,
+    color: "from-[#4a2c1a] to-[#8B5E3C]",
+  },
+  {
+    id: 2,
+    name: "Filosofi Kopi",
+    location: "Melawai",
+    dist: "350 m",
+    rating: 4.7,
+    color: "from-[#1a3a2c] to-[#2E7D32]",
+  },
+  {
+    id: 3,
+    name: "Epic Coffee",
+    location: "Senopati",
+    dist: "650 m",
+    rating: 4.6,
+    color: "from-[#1a1a3a] to-[#3a3a6a]",
+  },
 ];
 
 export default function HomePage() {
   const { address, isConnected } = useAccount();
-  const { balance, isLoading: pointsLoading, isError: pointsError } = useCafePoints(
-    address as `0x${string}` | undefined
-  );
+  const {
+    balance,
+    isLoading: pointsLoading,
+    isError: pointsError,
+  } = useCafePoints(address as `0x${string}` | undefined);
 
   const [recentTxs, setRecentTxs] = useState<TransactionRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
@@ -42,7 +76,11 @@ export default function HomePage() {
         setRecentTxs(rows.slice(0, 4));
         const today = new Date().toDateString();
         const earned = rows
-          .filter(r => r.type === "earn" && new Date(r.created_at).toDateString() === today)
+          .filter(
+            (r) =>
+              r.type === "earn" &&
+              new Date(r.created_at).toDateString() === today
+          )
           .reduce((sum, r) => sum + r.points, 0);
         setTodayEarned(earned);
       })
@@ -90,7 +128,7 @@ export default function HomePage() {
           )}
           <div>
             <p className="text-xs text-mocha font-medium">
-              {isConnected ? `Hi, ${greetingName}` : "Hi there"}
+              {isConnected ? `Hi, ${greetingName} 🍵🍵` : "Hi there"}
             </p>
             <div className="flex items-center gap-1">
               <p className="text-sm font-semibold text-espresso">{CAFE_NAME}</p>
@@ -117,7 +155,9 @@ export default function HomePage() {
           <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-white/5" />
           <div className="absolute -right-8 bottom-0 w-40 h-40 rounded-full bg-white/5" />
 
-          <p className="text-cream/70 text-xs font-medium mb-2">Your Loyalty Points</p>
+          <p className="text-cream/70 text-xs font-medium mb-2">
+            Your Loyalty Points
+          </p>
 
           <div className="flex items-end justify-between">
             <div>
@@ -169,7 +209,9 @@ export default function HomePage() {
             </div>
             <div>
               <p className="text-white font-semibold text-sm">Pay with QR</p>
-              <p className="text-cream/70 text-2xs">Earn points on every purchase</p>
+              <p className="text-cream/70 text-2xs">
+                Earn points on every purchase
+              </p>
             </div>
           </div>
           <ChevronRight size={20} className="text-white/60" />
@@ -178,7 +220,9 @@ export default function HomePage() {
         {/* ── Nearby Cafes ── */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-espresso">Nearby Cafes</h2>
+            <h2 className="text-lg font-semibold text-espresso">
+              Nearby Cafes
+            </h2>
             <button className="text-coffee text-sm font-medium">See all</button>
           </div>
           <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
@@ -188,15 +232,23 @@ export default function HomePage() {
                 className="shrink-0 w-32 rounded-2xl overflow-hidden shadow-card bg-white"
               >
                 {/* Cafe image placeholder */}
-                <div className={`h-24 bg-gradient-to-br ${cafe.color} flex items-center justify-center`}>
-                  <span className="text-white/30 text-2xs font-medium">cafe photo</span>
+                <div
+                  className={`h-24 bg-gradient-to-br ${cafe.color} flex items-center justify-center`}
+                >
+                  <span className="text-white/30 text-2xs font-medium">
+                    cafe photo
+                  </span>
                 </div>
                 <div className="p-2.5">
-                  <p className="text-xs font-semibold text-espresso leading-tight">{cafe.name}</p>
+                  <p className="text-xs font-semibold text-espresso leading-tight">
+                    {cafe.name}
+                  </p>
                   <p className="text-2xs text-mocha mt-0.5">{cafe.dist}</p>
                   <div className="flex items-center gap-1 mt-1">
                     <Star size={10} className="text-gold fill-gold" />
-                    <span className="text-2xs font-semibold text-coffee">{cafe.rating}</span>
+                    <span className="text-2xs font-semibold text-coffee">
+                      {cafe.rating}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -207,13 +259,19 @@ export default function HomePage() {
         {/* ── Recent Transactions ── */}
         <section className="pb-24">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-espresso">Recent Transactions</h2>
-            <Link href="/history" className="text-coffee text-sm font-medium">See all</Link>
+            <h2 className="text-lg font-semibold text-espresso">
+              Recent Transactions
+            </h2>
+            <Link href="/history" className="text-coffee text-sm font-medium">
+              See all
+            </Link>
           </div>
 
           {!isConnected && (
             <div className="bg-white rounded-2xl p-5 text-center shadow-card">
-              <p className="text-mocha text-sm">Connect your wallet to see transactions.</p>
+              <p className="text-mocha text-sm">
+                Connect your wallet to see transactions.
+              </p>
             </div>
           )}
 
@@ -238,23 +296,44 @@ export default function HomePage() {
                   className="bg-white rounded-2xl px-4 py-3.5 flex items-center justify-between shadow-card"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isEarn ? "bg-earn-light" : "bg-orange-50"}`}>
-                      {isEarn
-                        ? <TrendingUp size={16} className="text-earn-green" />
-                        : <TrendingDown size={16} className="text-orange-500" />}
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        isEarn ? "bg-earn-light" : "bg-orange-50"
+                      }`}
+                    >
+                      {isEarn ? (
+                        <TrendingUp size={16} className="text-earn-green" />
+                      ) : (
+                        <TrendingDown size={16} className="text-orange-500" />
+                      )}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-espresso">{tx.cafe_name}</p>
+                      <p className="text-sm font-semibold text-espresso">
+                        {tx.cafe_name}
+                      </p>
                       <p className="text-2xs text-mocha mt-0.5">
-                        {new Date(tx.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}, {new Date(tx.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(tx.created_at).toLocaleDateString("id-ID", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                        ,{" "}
+                        {new Date(tx.created_at).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                         {" · "}Rp {tx.idr_amount.toLocaleString("id-ID")}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1">
-                      <span className={`text-sm font-bold ${isEarn ? "text-earn-green" : "text-orange-500"}`}>
-                        {isEarn ? "+" : ""}{tx.points}
+                      <span
+                        className={`text-sm font-bold ${
+                          isEarn ? "text-earn-green" : "text-orange-500"
+                        }`}
+                      >
+                        {isEarn ? "+" : ""}
+                        {tx.points}
                       </span>
                       <Coins size={13} className="text-gold" />
                     </div>
