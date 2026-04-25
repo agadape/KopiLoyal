@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { CAFE_NAME, CAFE_LOCATION } from "@/lib/cafeConfig";
 import { useCafePoints } from "@/hooks/useCafePoints";
-import { getTransactions, type TransactionRow } from "@/lib/supabase";
+import { getTransactions, getUserProfile, type TransactionRow } from "@/lib/supabase";
 import {
   Bell, MapPin, QrCode, ChevronRight,
   TrendingUp, TrendingDown, Coins, Loader2, Star
@@ -27,9 +27,15 @@ export default function HomePage() {
   const [recentTxs, setRecentTxs] = useState<TransactionRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [todayEarned, setTodayEarned] = useState(0);
+  const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!address) return;
+    if (!address) {
+      setRecentTxs([]);
+      setTodayEarned(0);
+      return;
+    }
     setTxLoading(true);
     getTransactions(address)
       .then((rows) => {
@@ -44,24 +50,47 @@ export default function HomePage() {
       .finally(() => setTxLoading(false));
   }, [address]);
 
+  useEffect(() => {
+    if (!address) {
+      setDisplayName("");
+      setAvatarUrl(null);
+      return;
+    }
+
+    getUserProfile(address)
+      .then((profile) => {
+        setDisplayName(profile?.display_name ?? "");
+        setAvatarUrl(profile?.avatar_url ?? null);
+      })
+      .catch(console.error);
+  }, [address]);
+
   const shortAddr = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : null;
+  const greetingName = displayName.trim() || shortAddr;
 
   return (
     <div className="flex flex-col min-h-screen bg-latte-light">
       {/* ── Header ── */}
       <div className="bg-white px-5 pt-12 pb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {/* Avatar */}
-          <div className="w-11 h-11 rounded-full bg-espresso flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-base">
-              {address ? address.slice(2, 4).toUpperCase() : "KL"}
-            </span>
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Profile avatar"
+              className="w-11 h-11 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <div className="w-11 h-11 rounded-full bg-espresso flex items-center justify-center shrink-0">
+              <span className="text-white font-bold text-base">
+                {address ? address.slice(2, 4).toUpperCase() : "KL"}
+              </span>
+            </div>
+          )}
           <div>
             <p className="text-xs text-mocha font-medium">
-              {isConnected ? `Hi, ${shortAddr}` : "Hi there"}
+              {isConnected ? `Hi, ${greetingName}` : "Hi there"}
             </p>
             <div className="flex items-center gap-1">
               <p className="text-sm font-semibold text-espresso">{CAFE_NAME}</p>

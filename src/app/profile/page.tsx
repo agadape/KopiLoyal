@@ -1,26 +1,34 @@
 "use client";
 
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useAccount, useDisconnect, useReadContract } from "wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useCafePoints } from "@/hooks/useCafePoints";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME } from "@/lib/cafeConfig";
+import { getUserProfile, uploadAvatar, upsertUserProfile } from "@/lib/supabase";
 import {
-  ChevronRight, Copy, LogOut, Coins, Loader2,
+  Camera, ChevronRight, Copy, LogOut, Coins, Loader2,
   User, Store, Wallet, HelpCircle, Info, ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 const BADGE_TIERS = [
-  { name: "Bronze", visits: 10,  color: "bg-amber-100 text-amber-700 border-amber-200"  },
-  { name: "Silver", visits: 50,  color: "bg-gray-100  text-gray-600  border-gray-200"   },
-  { name: "Gold",   visits: 100, color: "bg-yellow-100 text-yellow-700 border-yellow-200"},
+  { name: "Bronze", visits: 10, color: "bg-amber-100 text-amber-700 border-amber-200" },
+  { name: "Silver", visits: 50, color: "bg-gray-100 text-gray-600 border-gray-200" },
+  { name: "Gold", visits: 100, color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
 ];
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { balance, isLoading: pointsLoading } = useCafePoints(address as `0x${string}` | undefined);
+  const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const { data: visitCount } = useReadContract({
     address: KOPILOYALTY_ADDRESS,
@@ -38,10 +46,33 @@ export default function ProfilePage() {
     query: { enabled: isConnected && !!address },
   });
 
+  useEffect(() => {
+    if (!address) {
+      setDisplayName("");
+      setAvatarUrl(null);
+      setAvatarFile(null);
+      return;
+    }
+
+    setProfileLoading(true);
+    getUserProfile(address)
+      .then((profile) => {
+        setDisplayName(profile?.display_name ?? "");
+        setAvatarUrl(profile?.avatar_url ?? null);
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error("Failed to load your profile.");
+      })
+      .finally(() => setProfileLoading(false));
+  }, [address]);
+
   const visits = visitCount ? Number(visitCount) : 0;
   const badges = claimedBadges ? Number(claimedBadges) : 0;
-  const nextBadge = BADGE_TIERS.find(b => visits < b.visits);
+  const nextBadge = BADGE_TIERS.find((badge) => visits < badge.visits);
   const progress = nextBadge ? Math.round((visits / nextBadge.visits) * 100) : 100;
+  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+  const visibleName = displayName.trim() || shortAddress;
 
   function copyAddress() {
     if (!address) return;
@@ -49,33 +80,102 @@ export default function ProfilePage() {
     toast.success("Wallet address copied!");
   }
 
+  function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file.");
+      return;
+    }
+
+    setAvatarFile(file);
+    setAvatarUrl(URL.createObjectURL(file));
+  }
+
+  async function handleSaveProfile() {
+    if (!address) {
+      toast.error("Connect your wallet first.");
+      return;
+    }
+
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      toast.error("Name cannot be empty.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const nextAvatarUrl = avatarFile ? await uploadAvatar(address, avatarFile) : avatarUrl;
+      await upsertUserProfile({
+        wallet_address: address,
+        display_name: trimmedName,
+        avatar_url: nextAvatarUrl ?? null,
+      });
+
+      setDisplayName(trimmedName);
+      setAvatarUrl(nextAvatarUrl ?? null);
+      setAvatarFile(null);
+      toast.success("Profile updated.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to save profile.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   const SETTINGS = [
-    { icon: User,       label: "Change Name",    right: null,         action: () => toast.info("Coming soon!") },
-    { icon: Store,      label: "Switch Cafe",    right: CAFE_NAME,    action: () => toast.info("Coming soon!") },
-    { icon: Wallet,     label: "Wallet",         right: "Connected",  rightColor: "text-earn-green", action: () => {} },
-    { icon: HelpCircle, label: "Help & Support", right: null,         action: () => toast.info("Coming soon!") },
-    { icon: Info,       label: "About KopiLoyalty", right: null,      action: () => toast.info("Coming soon!") },
+    { icon: Store, label: "Switch Cafe", right: CAFE_NAME, action: () => toast.info("Coming soon!") },
+    { icon: Wallet, label: "Wallet", right: "Connected", rightColor: "text-earn-green", action: () => {} },
+    { icon: HelpCircle, label: "Help & Support", right: null, action: () => toast.info("Coming soon!") },
+    { icon: Info, label: "About KopiLoyalty", right: null, action: () => toast.info("Coming soon!") },
   ];
 
   return (
     <div className="flex flex-col min-h-screen bg-latte-light">
-      {/* ── Header ── */}
       <div className="bg-white px-5 pt-12 pb-6 text-center">
         <h1 className="font-semibold text-espresso text-base mb-5">Profile</h1>
 
-        {/* Avatar */}
         <div className="relative w-20 h-20 mx-auto mb-3">
-          <div className="w-20 h-20 rounded-full bg-espresso flex items-center justify-center shadow-hero">
-            <span className="text-white font-bold text-2xl">
-              {address ? address.slice(2, 4).toUpperCase() : "?"}
-            </span>
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Profile avatar"
+              className="w-20 h-20 rounded-full object-cover shadow-hero"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-espresso flex items-center justify-center shadow-hero">
+              <span className="text-white font-bold text-2xl">
+                {address ? address.slice(2, 4).toUpperCase() : "?"}
+              </span>
+            </div>
+          )}
+
+          {isConnected && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white border border-cream shadow-card flex items-center justify-center"
+                aria-label="Change profile picture"
+              >
+                <Camera size={14} className="text-coffee" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+            </>
+          )}
         </div>
 
         {isConnected && address ? (
           <>
             <p className="font-bold text-espresso text-lg">
-              {address.slice(0, 6)}...{address.slice(-4)}
+              {profileLoading ? "Loading..." : visibleName}
             </p>
             <button
               onClick={copyAddress}
@@ -85,11 +185,12 @@ export default function ProfilePage() {
               <Copy size={12} />
             </button>
 
-            {/* Points badge */}
             <div className="inline-flex items-center gap-1.5 bg-latte rounded-full px-3 py-1.5 mt-3">
-              {pointsLoading
-                ? <Loader2 size={14} className="animate-spin text-coffee" />
-                : <span className="font-bold text-espresso text-sm">{(balance ?? 0).toLocaleString("id-ID")}</span>}
+              {pointsLoading ? (
+                <Loader2 size={14} className="animate-spin text-coffee" />
+              ) : (
+                <span className="font-bold text-espresso text-sm">{(balance ?? 0).toLocaleString("id-ID")}</span>
+              )}
               <Coins size={14} className="text-gold" />
               <span className="text-xs text-mocha">points</span>
             </div>
@@ -103,7 +204,40 @@ export default function ProfilePage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-4 pb-24">
-        {/* ── Badge Progress ── */}
+        {isConnected && (
+          <div className="bg-white rounded-3xl p-5 shadow-card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-full bg-latte flex items-center justify-center">
+                <User size={15} className="text-coffee" />
+              </div>
+              <p className="text-sm font-semibold text-espresso">Personalize Profile</p>
+            </div>
+
+            <label className="text-xs text-mocha font-medium mb-2 block">Display Name</label>
+            <input
+              type="text"
+              maxLength={32}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="Your name"
+              className="w-full rounded-2xl border border-cream px-4 py-3 text-sm text-espresso outline-none focus:border-mocha"
+            />
+
+            <p className="text-2xs text-mocha/70 mt-2">
+              This name will replace the short wallet address on the home screen.
+            </p>
+
+            <button
+              onClick={handleSaveProfile}
+              disabled={isSaving || profileLoading}
+              className="mt-4 w-full bg-espresso text-white rounded-2xl py-3.5 font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isSaving && <Loader2 size={16} className="animate-spin" />}
+              {isSaving ? "Saving..." : "Save Profile"}
+            </button>
+          </div>
+        )}
+
         {isConnected && (
           <div className="bg-white rounded-3xl p-5 shadow-card">
             <p className="text-sm font-semibold text-espresso mb-4">Loyalty Badges</p>
@@ -128,8 +262,8 @@ export default function ProfilePage() {
             )}
 
             <div className="flex gap-2">
-              {BADGE_TIERS.map((badge, i) => {
-                const owned = Boolean((badges >> i) & 1);
+              {BADGE_TIERS.map((badge, index) => {
+                const owned = Boolean((badges >> index) & 1);
                 return (
                   <div
                     key={badge.name}
@@ -147,13 +281,12 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* ── Settings ── */}
         <div className="bg-white rounded-3xl shadow-card overflow-hidden">
-          {SETTINGS.map(({ icon: Icon, label, right, rightColor, action }, i) => (
+          {SETTINGS.map(({ icon: Icon, label, right, rightColor, action }, index) => (
             <button
               key={label}
               onClick={action}
-              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-latte/50 transition-colors text-left ${i < SETTINGS.length - 1 ? "border-b border-latte" : ""}`}
+              className={`w-full flex items-center justify-between px-5 py-4 hover:bg-latte/50 transition-colors text-left ${index < SETTINGS.length - 1 ? "border-b border-latte" : ""}`}
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-latte flex items-center justify-center">
@@ -171,7 +304,6 @@ export default function ProfilePage() {
           ))}
         </div>
 
-        {/* Admin link */}
         <Link
           href="/admin"
           className="bg-white rounded-2xl shadow-card px-5 py-4 flex items-center justify-between"
@@ -188,7 +320,6 @@ export default function ProfilePage() {
           </div>
         </Link>
 
-        {/* ── Disconnect ── */}
         {isConnected && (
           <button
             onClick={() => disconnect()}
