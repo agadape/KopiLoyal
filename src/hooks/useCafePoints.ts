@@ -23,6 +23,8 @@ export function useCafePoints(address?: `0x${string}`) {
   });
 
   return {
+    // balance is safe to convert to Number — max is deposit × 10,000 (e.g. 1000 MON → 10B pts),
+    // well below Number.MAX_SAFE_INTEGER (~9 quadrillion)
     balance: balance !== undefined ? Number(balance) : null,
     pointsTokenId,
     cafeData,
