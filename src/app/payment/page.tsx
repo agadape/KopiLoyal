@@ -93,7 +93,23 @@ export default function PaymentPage() {
 
     try {
       const [{ QRCanvas, frontalCamera }] = await Promise.all([import("qr/dom.js")]);
-      const camera = await frontalCamera(videoRef.current);
+      const video = videoRef.current;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("autoplay", "");
+      video.setAttribute("muted", "");
+
+      let camera: Awaited<ReturnType<typeof frontalCamera>>;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        video.srcObject = stream;
+        await video.play();
+        camera = await frontalCamera(video);
+      } catch {
+        camera = await frontalCamera(video);
+      }
       const canvas = new QRCanvas();
 
       cameraRef.current = camera as CameraHandle;

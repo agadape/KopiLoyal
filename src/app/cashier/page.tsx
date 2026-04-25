@@ -213,7 +213,7 @@ export default function CashierPage() {
               </div>
             </div>
 
-            <div className="w-64 h-64 mx-auto bg-white border-2 border-latte rounded-2xl p-3 shadow-card relative flex items-center justify-center overflow-hidden">
+            <div className="w-72 h-72 mx-auto bg-white border-2 border-latte rounded-2xl p-3 shadow-card relative flex items-center justify-center overflow-hidden">
               <div
                 className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
                 dangerouslySetInnerHTML={{ __html: merchantQrSvg }}
