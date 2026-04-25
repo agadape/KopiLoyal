@@ -69,9 +69,9 @@ export default function ProfilePage() {
   }
 
   const badgeBalances = [
-    { owned: Boolean(((claimedBadges ?? 0n) >> 0n) & 1n), tokenId: getBadgeTokenId(0) },
-    { owned: Boolean(((claimedBadges ?? 0n) >> 1n) & 1n), tokenId: getBadgeTokenId(1) },
-    { owned: Boolean(((claimedBadges ?? 0n) >> 2n) & 1n), tokenId: getBadgeTokenId(2) },
+    { owned: Boolean((Number(claimedBadges) >> 0) & 1), tokenId: getBadgeTokenId(0) },
+    { owned: Boolean((Number(claimedBadges) >> 1) & 1), tokenId: getBadgeTokenId(1) },
+    { owned: Boolean((Number(claimedBadges) >> 2) & 1), tokenId: getBadgeTokenId(2) },
   ];
 
   async function handleClaimRefund() {
