@@ -8,9 +8,11 @@ import { getTransactions, type TransactionRow, type TxType } from "@/lib/supabas
 import clsx from "clsx";
 
 const FILTERS = [
-  { key: "all",    label: "All"    },
-  { key: "earn",   label: "Earn"   },
-  { key: "redeem", label: "Redeem" },
+  { key: "all",         label: "All"     },
+  { key: "earn",        label: "Earn"    },
+  { key: "redeem",      label: "Redeem"  },
+  { key: "voucher_buy", label: "Voucher" },
+  { key: "refund",      label: "Refund"  },
 ] as const;
 
 const TX_META: Record<TxType, { Icon: React.ElementType; iconColor: string; iconBg: string }> = {

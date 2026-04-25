@@ -1,17 +1,19 @@
 "use client";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { useAccount, useDisconnect, useReadContract } from "wagmi";
+import { useAccount, useDisconnect, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useCafePoints } from "@/hooks/useCafePoints";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME } from "@/lib/cafeConfig";
 import { getUserProfile, uploadAvatar, upsertUserProfile } from "@/lib/supabase";
+import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import {
   Camera, ChevronRight, Copy, LogOut, Coins, Loader2,
-  User, Store, Wallet, HelpCircle, Info, ShieldCheck
+  User, Store, Wallet, HelpCircle, Info, ShieldCheck, RotateCcw
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { keccak256, encodePacked, toHex } from "viem";
 
 const BADGE_TIERS = [
   { name: "Bronze", visits: 10, color: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -22,13 +24,16 @@ const BADGE_TIERS = [
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { balance, isLoading: pointsLoading } = useCafePoints(address as `0x${string}` | undefined);
+  const { balance, pointsTokenId, isLoading: pointsLoading } = useCafePoints(address as `0x${string}` | undefined);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isClaimingRefund, setIsClaimingRefund] = useState(false);
 
   const { data: visitCount } = useReadContract({
     address: KOPILOYALTY_ADDRESS,
@@ -45,6 +50,47 @@ export default function ProfilePage() {
     args: address ? [CAFE_ID, address] : undefined,
     query: { enabled: isConnected && !!address },
   });
+
+  const { data: refundClaimable } = useReadContract({
+    address: KOPILOYALTY_ADDRESS,
+    abi: KOPILOYALTY_ABI,
+    functionName: "isRefundClaimable",
+    args: [CAFE_ID],
+    query: { enabled: isConnected && !!address && !!pointsTokenId },
+  });
+
+  const canClaimRefund = Boolean(refundClaimable && balance && balance > 0);
+
+  function getBadgeTokenId(tier: number) {
+    const padded = toHex("KL_BADGE", { size: 32 });
+    return keccak256(encodePacked(["bytes32", "uint256", "uint8"], [padded, CAFE_ID, tier]));
+  }
+
+  const badgeBalances = [
+    { owned: Boolean((badges >> 0) & 1), tokenId: getBadgeTokenId(0) },
+    { owned: Boolean((badges >> 1) & 1), tokenId: getBadgeTokenId(1) },
+    { owned: Boolean((badges >> 2) & 1), tokenId: getBadgeTokenId(2) },
+  ];
+
+  async function handleClaimRefund() {
+    if (!isConnected || !address) { toast.error("Connect wallet dulu."); return; }
+    setIsClaimingRefund(true);
+    try {
+      const hash = await writeContractAsync({
+        address: KOPILOYALTY_ADDRESS,
+        abi: KOPILOYALTY_ABI,
+        functionName: "claimRefund",
+        args: [CAFE_ID],
+      });
+      await publicClient!.waitForTransactionReceipt({ hash });
+      toast.success("Refund berhasil diklaim!");
+    } catch (err) {
+      const e = parseContractError(err);
+      if (e.code !== KopiErrorCode.USER_REJECTED) toast.error(e.userMessage);
+    } finally {
+      setIsClaimingRefund(false);
+    }
+  }
 
   useEffect(() => {
     if (!address) {
@@ -238,6 +284,32 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {isConnected && canClaimRefund && (
+          <div className="bg-white rounded-3xl p-5 shadow-card">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                <RotateCcw size={18} className="text-blue-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-espresso mb-1">Klaim Refund</p>
+                <p className="text-xs text-mocha/70 mb-3">
+                  Anda punya <span className="font-semibold text-espresso">{(balance ?? 0).toLocaleString("id-ID")}</span> poin.
+                  Tukar jadi MON sebelum cafe ditutup.
+                </p>
+                <button
+                  onClick={handleClaimRefund}
+                  disabled={isClaimingRefund}
+                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 transition-colors w-full justify-center"
+                >
+                  {isClaimingRefund
+                    ? <><Loader2 size={14} className="animate-spin" /> Processing…</>
+                    : <><RotateCcw size={14} /> Klaim Sekarang</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isConnected && (
           <div className="bg-white rounded-3xl p-5 shadow-card">
             <p className="text-sm font-semibold text-espresso mb-4">Loyalty Badges</p>
@@ -263,7 +335,7 @@ export default function ProfilePage() {
 
             <div className="flex gap-2">
               {BADGE_TIERS.map((badge, index) => {
-                const owned = Boolean((badges >> index) & 1);
+                const { owned } = badgeBalances[index];
                 return (
                   <div
                     key={badge.name}
