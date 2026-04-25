@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAccount, useReadContract, usePublicClient, useWriteContract } from "wagmi";
 import { isAddress } from "viem";
 import { toast } from "sonner";
-import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert } from "lucide-react";
+import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert, Coins } from "lucide-react";
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, DEFAULT_CAFE_ID } from "@/lib/contract";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
@@ -41,6 +41,18 @@ export default function CashierPage() {
   const isOwner = cafeData && address
     ? cafeData[0].toLowerCase() === address.toLowerCase()
     : null;
+
+  // Remaining mintable capacity
+  const { data: mintablePoints } = useReadContract({
+    address: KOPILOYALTY_ADDRESS,
+    abi: KOPILOYALTY_ABI,
+    functionName: "getMintablePoints",
+    args: [DEFAULT_CAFE_ID],
+    query: { enabled: isConnected && !!address },
+  });
+
+  const mintable = mintablePoints !== undefined ? Number(mintablePoints) : null;
+  const lowCapacity = mintable !== null && mintable < 100;
 
   async function handleMint() {
     if (!isConnected || !address) { toast.error("Connect wallet dulu."); return; }
@@ -128,6 +140,22 @@ export default function CashierPage() {
           </div>
         )}
 
+        {/* Capacity warning */}
+        {isConnected && isOwner === true && mintable !== null && (
+          <div className={`rounded-2xl p-4 flex items-center gap-3 ${lowCapacity ? "bg-amber-50 border border-amber-200" : "bg-earn-light border border-green-200"}`}>
+            <Coins size={18} className={lowCapacity ? "text-amber-500" : "text-earn-green"} />
+            <div>
+              <p className={`text-sm font-medium ${lowCapacity ? "text-amber-700" : "text-earn-green"}`}>
+                {lowCapacity ? "Kapasitas hampir habis!" : "Kapasitas mencukupi"}
+              </p>
+              <p className={`text-xs ${lowCapacity ? "text-amber-600" : "text-earn-green/70"}`}>
+                Sisa kapasitas mint: <span className="font-semibold">{mintable.toLocaleString("id-ID")}</span> poin
+                {lowCapacity && " — owner perlu deposit MON untuk menambah kapasitas"}
+              </p>
+            </div>
+          </div>
+        )}
+
         {!isConnected && (
           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-sm text-amber-700">
             Connect wallet owner cafe untuk menggunakan mode kasir.
@@ -194,12 +222,17 @@ export default function CashierPage() {
               <span className="font-semibold text-espresso">Poin diberikan</span>
               <span className="font-bold text-green-600">+{earnedPoints}</span>
             </div>
+            {mintable !== null && earnedPoints > mintable && (
+              <p className="text-xs text-red-500 mt-2 font-medium">
+                Kapasitas tidak mencukupi. Sisa: {mintable.toLocaleString("id-ID")} poin.
+              </p>
+            )}
           </div>
         )}
 
         <button
           onClick={handleMint}
-          disabled={isPending || !validAddress || bill === 0 || isOwner === false || !isConnected}
+          disabled={isPending || !validAddress || bill === 0 || isOwner === false || !isConnected || (mintable !== null && earnedPoints > mintable)}
           className="bg-espresso text-white rounded-2xl py-4 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isPending && <Loader2 size={18} className="animate-spin" />}
