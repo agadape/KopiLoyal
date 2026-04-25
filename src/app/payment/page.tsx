@@ -1,19 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { toast } from "sonner";
-import { ChevronLeft, CheckCircle, Info, Coins, Loader2, Shield, MapPin } from "lucide-react";
+import { ChevronLeft, CheckCircle, Info, Coins, Loader2, Shield, MapPin, ScanLine, CameraOff } from "lucide-react";
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, CAFE_LOCATION, BURN_RATE_IDR } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import { logTransaction } from "@/lib/supabase";
 import { useCafePoints } from "@/hooks/useCafePoints";
+import { parseMerchantQrPayload, type MerchantQrPayload } from "@/lib/merchantQr";
+
+type ScannerState = "idle" | "starting" | "active";
+type CameraHandle = { stop: () => void; readFrame: (canvas: unknown, fullSize?: boolean) => string | undefined };
+type FrameCancel = () => void;
 
 export default function PaymentPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraRef = useRef<CameraHandle | null>(null);
+  const cancelLoopRef = useRef<FrameCancel | null>(null);
 
   const { balance: pointBalance, pointsTokenId, isLoading: pointsLoading } = useCafePoints(
     address as `0x${string}` | undefined
@@ -24,12 +32,69 @@ export default function PaymentPage() {
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [redeemedPoints, setRedeemedPoints] = useState(0);
+  const [scannerState, setScannerState] = useState<ScannerState>("idle");
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [merchantQr, setMerchantQr] = useState<MerchantQrPayload | null>(null);
+
+  useEffect(() => {
+    return () => stopScanner();
+  }, []);
 
   const maxPoints = pointBalance ?? 0;
   const discount = pointsToRedeem * BURN_RATE_IDR;
+  const canRedeemForScannedCafe = merchantQr?.cafeId === Number(CAFE_ID);
+
+  function stopScanner() {
+    cancelLoopRef.current?.();
+    cancelLoopRef.current = null;
+    cameraRef.current?.stop();
+    cameraRef.current = null;
+    setScannerState("idle");
+  }
+
+  async function startScanner() {
+    if (!videoRef.current) return;
+
+    stopScanner();
+    setScannerState("starting");
+    setScannerError(null);
+
+    try {
+      const [{ QRCanvas, frontalCamera, frameLoop }] = await Promise.all([import("qr/dom.js")]);
+      const camera = await frontalCamera(videoRef.current);
+      const canvas = new QRCanvas();
+
+      cameraRef.current = camera as CameraHandle;
+      setScannerState("active");
+
+      cancelLoopRef.current = frameLoop(() => {
+        const raw = camera.readFrame(canvas);
+        if (!raw) return;
+
+        const payload = parseMerchantQrPayload(raw);
+        if (!payload) return;
+
+        setMerchantQr(payload);
+        toast.success(`Scanned ${payload.cafeName}.`);
+        stopScanner();
+      });
+    } catch (error) {
+      console.error(error);
+      setScannerState("idle");
+      setScannerError("Camera access failed. You can try again.");
+    }
+  }
+
+  function clearScan() {
+    setMerchantQr(null);
+    setUsePoints(false);
+    setPointsToRedeem(0);
+  }
 
   async function handleRedeem() {
     if (!isConnected || !address) { toast.error("Connect your wallet first."); return; }
+    if (!merchantQr) { toast.error("Scan the merchant QR first."); return; }
+    if (!canRedeemForScannedCafe) { toast.error("This QR is not for the configured cafe."); return; }
     if (pointsToRedeem === 0) { toast.error("Select points to redeem."); return; }
     if (pointsTokenId === undefined) { toast.error("Cafe data not loaded. Try again."); return; }
 
@@ -72,7 +137,6 @@ export default function PaymentPage() {
     }
   }
 
-  // ── Success state ──
   if (txHash) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-6 bg-latte-light">
@@ -82,7 +146,7 @@ export default function PaymentPage() {
         <div>
           <h2 className="text-2xl font-bold text-espresso">Points Redeemed!</h2>
           <p className="text-mocha text-sm mt-1">
-            -{redeemedPoints} pts · saved Rp {(redeemedPoints * BURN_RATE_IDR).toLocaleString("id-ID")}
+            -{redeemedPoints} pts saved Rp {(redeemedPoints * BURN_RATE_IDR).toLocaleString("id-ID")}
           </p>
         </div>
         <a
@@ -95,7 +159,7 @@ export default function PaymentPage() {
         </a>
         <div className="flex gap-3 w-full">
           <button
-            onClick={() => { setTxHash(null); setUsePoints(false); setPointsToRedeem(0); }}
+            onClick={() => { setTxHash(null); clearScan(); }}
             className="flex-1 bg-espresso text-white py-3.5 rounded-2xl font-semibold text-sm"
           >
             Done
@@ -108,77 +172,97 @@ export default function PaymentPage() {
     );
   }
 
-  // ── QR pattern (deterministic) ──
-  const qrCells = Array.from({ length: 100 }).map((_, i) => {
-    const row = Math.floor(i / 10);
-    const col = i % 10;
-    // Corner finder patterns
-    if ((row < 3 && col < 3) || (row < 3 && col > 6) || (row > 6 && col < 3)) return true;
-    const seed = address ? parseInt(address.slice(2 + (i % 38), 4 + (i % 38)), 16) : i * 37;
-    return (seed ^ (i * 13)) % 2 === 0;
-  });
-
   return (
     <div className="flex flex-col min-h-screen bg-latte-light">
-      {/* ── Header ── */}
       <div className="bg-white px-5 pt-12 pb-4 flex items-center gap-3">
         <Link href="/" className="w-9 h-9 rounded-full bg-latte flex items-center justify-center">
           <ChevronLeft size={20} className="text-coffee" />
         </Link>
-        <h1 className="font-semibold text-espresso text-base">Payment</h1>
+        <h1 className="font-semibold text-espresso text-base">Scan to Pay</h1>
       </div>
 
       <div className="px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* ── Cafe info + QR ── */}
-        <div className="bg-white rounded-3xl p-6 shadow-card text-center">
-          {/* Cafe logo */}
-          <div className="w-16 h-16 rounded-full bg-espresso flex items-center justify-center mx-auto mb-3 shadow-hero">
-            <span className="text-white font-bold text-lg">KT</span>
-          </div>
-          <p className="font-bold text-espresso text-lg">{CAFE_NAME}</p>
-          <div className="flex items-center justify-center gap-1 mt-1 mb-5">
-            <MapPin size={11} className="text-mocha" />
-            <p className="text-xs text-mocha">{CAFE_LOCATION}</p>
+        <div className="bg-white rounded-3xl p-5 shadow-card">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-semibold text-espresso">Scan Merchant QR</p>
+              <p className="text-xs text-mocha mt-1">Scan the QR shown by the cafe owner or cashier.</p>
+            </div>
+            {scannerState === "active" ? (
+              <button
+                onClick={stopScanner}
+                className="shrink-0 px-3 py-2 rounded-xl bg-latte text-espresso text-xs font-semibold"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={startScanner}
+                className="shrink-0 px-3 py-2 rounded-xl bg-espresso text-white text-xs font-semibold flex items-center gap-2"
+              >
+                {scannerState === "starting" ? <Loader2 size={14} className="animate-spin" /> : <ScanLine size={14} />}
+                {scannerState === "starting" ? "Starting..." : "Scan"}
+              </button>
+            )}
           </div>
 
-          {/* QR Code */}
-          <div className="w-52 h-52 mx-auto bg-white border-2 border-latte rounded-2xl p-3 shadow-card relative">
-            <div className="grid grid-cols-10 gap-px w-full h-full">
-              {qrCells.map((filled, i) => (
-                <div
-                  key={i}
-                  className={`rounded-sm ${filled ? "bg-espresso" : "bg-transparent"}`}
-                />
-              ))}
-            </div>
-            {/* Center logo overlay */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm border border-cream">
-                <Coins size={18} className="text-gold" />
+          <div className="rounded-2xl overflow-hidden bg-neutral-950 aspect-square flex items-center justify-center">
+            {scannerState === "idle" && (
+              <div className="text-center px-6">
+                <CameraOff size={22} className="text-white/70 mx-auto mb-2" />
+                <p className="text-xs text-white/80">Open the camera and point it at the merchant QR.</p>
               </div>
-            </div>
+            )}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${scannerState === "idle" ? "hidden" : "block"}`}
+            />
           </div>
 
-          <p className="text-xs text-mocha mt-4">
-            {isConnected && address
-              ? `Scan this QR to pay`
-              : "Connect wallet to generate QR"}
-          </p>
-          {isConnected && address && (
-            <p className="text-2xs text-mocha/60 mt-1 font-mono">{address.slice(0, 14)}...</p>
+          {scannerError && (
+            <p className="text-xs text-red-500 mt-2">{scannerError}</p>
           )}
         </div>
 
-        {/* ── Cashier notice ── */}
+        <div className="bg-white rounded-3xl p-6 shadow-card">
+          <div className="w-16 h-16 rounded-full bg-espresso flex items-center justify-center mx-auto mb-3 shadow-hero">
+            <span className="text-white font-bold text-lg">KT</span>
+          </div>
+
+          {merchantQr ? (
+            <div className="text-center">
+              <p className="font-bold text-espresso text-lg">{merchantQr.cafeName}</p>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <MapPin size={11} className="text-mocha" />
+                <p className="text-xs text-mocha">{merchantQr.location ?? "Merchant QR scanned"}</p>
+              </div>
+              <p className="text-2xs text-mocha/70 mt-3">Cafe ID {merchantQr.cafeId}</p>
+              <button
+                onClick={clearScan}
+                className="mt-4 text-xs text-coffee font-semibold"
+              >
+                Scan another QR
+              </button>
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="font-semibold text-espresso text-base">No merchant scanned yet</p>
+              <p className="text-xs text-mocha mt-2">Scan first, then use points for the scanned cafe.</p>
+            </div>
+          )}
+        </div>
+
         <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-2xl p-4 flex items-start gap-3">
           <Info size={15} className="text-[#F9A825] mt-0.5 shrink-0" />
           <p className="text-xs text-[#7B6000] leading-relaxed">
-            <span className="font-semibold">Points are added by the cashier.</span>
-            {" "}Show this QR when paying. The cashier will mint points to your wallet.
+            <span className="font-semibold">Flow revision applied.</span>
+            {" "}Customers now scan the merchant QR. The merchant QR identifies the cafe, then this screen handles any point redemption.
           </p>
         </div>
 
-        {/* ── Points balance ── */}
         {isConnected && (
           <div className="bg-white rounded-2xl px-5 py-4 shadow-card">
             <p className="text-xs text-mocha font-medium mb-0.5">Your Balance</p>
@@ -197,20 +281,26 @@ export default function PaymentPage() {
           </div>
         )}
 
-        {/* ── Redeem toggle ── */}
-        {isConnected && maxPoints > 0 && (
+        {merchantQr && (
           <div className="bg-white rounded-2xl p-5 shadow-card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-espresso">Use Points Now</p>
               <button
                 onClick={() => { setUsePoints(!usePoints); setPointsToRedeem(0); }}
-                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${usePoints ? "bg-espresso" : "bg-cream"}`}
+                disabled={!canRedeemForScannedCafe}
+                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${usePoints ? "bg-espresso" : "bg-cream"} disabled:opacity-50`}
               >
                 <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${usePoints ? "translate-x-6" : "translate-x-0.5"}`} />
               </button>
             </div>
 
-            {usePoints && (
+            {!canRedeemForScannedCafe && (
+              <p className="text-xs text-red-500 mb-3">
+                This QR is for cafe #{merchantQr.cafeId}, but the app is currently configured for cafe #{String(CAFE_ID)}.
+              </p>
+            )}
+
+            {usePoints && canRedeemForScannedCafe && (
               <div className="mt-1">
                 <input
                   type="range"
@@ -240,7 +330,7 @@ export default function PaymentPage() {
           </div>
         )}
 
-        {usePoints && pointsToRedeem > 0 && (
+        {usePoints && canRedeemForScannedCafe && pointsToRedeem > 0 && (
           <button
             onClick={handleRedeem}
             disabled={isPending}
@@ -251,7 +341,6 @@ export default function PaymentPage() {
           </button>
         )}
 
-        {/* Footer */}
         <div className="flex items-center justify-center gap-2 py-2">
           <Shield size={12} className="text-mocha/60" />
           <p className="text-2xs text-mocha/60">Secure payment powered by KopiLoyalty</p>

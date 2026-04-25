@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import encodeQR from "qr";
 import { useAccount, useReadContract, usePublicClient, useWriteContract } from "wagmi";
 import { isAddress } from "viem";
 import { toast } from "sonner";
-import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert } from "lucide-react";
+import { Coffee, ChevronLeft, Loader2, CheckCircle, ShieldAlert, QrCode, Store } from "lucide-react";
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, DEFAULT_CAFE_ID } from "@/lib/contract";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import { logTransaction } from "@/lib/supabase";
+import { CAFE_LOCATION, CAFE_NAME } from "@/lib/cafeConfig";
+import { createMerchantQrPayload, serializeMerchantQrPayload } from "@/lib/merchantQr";
 
-const EARN_RATE = 1000; // Rp1.000 = 1 point
-const CAFE_NAME = "Kopi Tugu Jogja";
+const EARN_RATE = 1000;
 
 export default function CashierPage() {
   const { address, isConnected } = useAccount();
@@ -28,7 +30,20 @@ export default function CashierPage() {
   const earnedPoints = Math.floor(bill / EARN_RATE);
   const validAddress = isAddress(customerAddress);
 
-  // Check if connected wallet is the cafe owner
+  const merchantPayload = useMemo(
+    () => createMerchantQrPayload(DEFAULT_CAFE_ID, CAFE_NAME, CAFE_LOCATION),
+    []
+  );
+  const merchantQrSvg = useMemo(
+    () =>
+      encodeQR(serializeMerchantQrPayload(merchantPayload), "svg", {
+        ecc: "medium",
+        border: 2,
+        scale: 6,
+      }),
+    [merchantPayload]
+  );
+
   const { data: cafeData } = useReadContract({
     address: KOPILOYALTY_ADDRESS,
     abi: KOPILOYALTY_ABI,
@@ -37,7 +52,6 @@ export default function CashierPage() {
     query: { enabled: isConnected && !!address },
   });
 
-  // getCafe tuple: [owner, depositAmount, pointsTokenId, ...]
   const isOwner = cafeData && address
     ? cafeData[0].toLowerCase() === address.toLowerCase()
     : null;
@@ -85,7 +99,7 @@ export default function CashierPage() {
         </div>
         <div>
           <h2 className="text-xl font-bold text-espresso">Poin Terkirim!</h2>
-          <p className="text-brown/60 text-sm mt-1">+{mintedPoints} poin → {customerAddress.slice(0, 8)}…</p>
+          <p className="text-brown/60 text-sm mt-1">+{mintedPoints} poin to {customerAddress.slice(0, 8)}...</p>
         </div>
         <a
           href={`https://explorer.monad.xyz/tx/${txHash}`}
@@ -93,7 +107,7 @@ export default function CashierPage() {
           rel="noopener noreferrer"
           className="text-xs text-mocha font-mono underline underline-offset-2 break-all"
         >
-          {txHash.slice(0, 18)}…{txHash.slice(-8)}
+          {txHash.slice(0, 18)}...{txHash.slice(-8)}
         </a>
         <button
           onClick={() => { setTxHash(null); setCustomerAddress(""); setBillAmount(""); }}
@@ -114,11 +128,10 @@ export default function CashierPage() {
           </Link>
           <h1 className="font-semibold">Mode Kasir</h1>
         </div>
-        <p className="text-cream/60 text-xs ml-11">Mint poin untuk pelanggan</p>
+        <p className="text-cream/60 text-xs ml-11">Show merchant QR and mint points after payment</p>
       </div>
 
       <div className="px-5 py-6 flex flex-col gap-4">
-        {/* Owner check */}
         {isConnected && isOwner === false && (
           <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center gap-3">
             <ShieldAlert size={20} className="text-red-500 shrink-0" />
@@ -134,8 +147,42 @@ export default function CashierPage() {
           </div>
         )}
 
-        {/* Customer address */}
         <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-latte flex items-center justify-center">
+              <QrCode size={18} className="text-coffee" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-espresso">Merchant QR</p>
+              <p className="text-xs text-brown/60">Customer scans this QR from the payment page.</p>
+            </div>
+          </div>
+
+          <div className="w-56 h-56 mx-auto bg-white border-2 border-latte rounded-2xl p-3 shadow-card relative flex items-center justify-center overflow-hidden">
+            <div
+              className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
+              dangerouslySetInnerHTML={{ __html: merchantQrSvg }}
+            />
+          </div>
+
+          <div className="mt-4 text-center">
+            <p className="font-semibold text-espresso">{CAFE_NAME}</p>
+            <p className="text-xs text-mocha mt-1">{CAFE_LOCATION}</p>
+            <p className="text-2xs text-mocha/70 mt-2">Cafe ID {String(DEFAULT_CAFE_ID)}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-latte flex items-center justify-center">
+              <Store size={18} className="text-coffee" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-espresso">Mint Customer Points</p>
+              <p className="text-xs text-brown/60">After payment, mint loyalty points to the customer's wallet.</p>
+            </div>
+          </div>
+
           <label className="text-xs text-brown/60 font-medium mb-2 block">Alamat Wallet Pelanggan</label>
           <input
             type="text"
@@ -148,11 +195,10 @@ export default function CashierPage() {
             <p className="text-xs text-red-500 mt-1">Alamat tidak valid</p>
           )}
           {validAddress && (
-            <p className="text-xs text-green-600 mt-1 font-medium">✓ Alamat valid</p>
+            <p className="text-xs text-green-600 mt-1 font-medium">Wallet valid</p>
           )}
         </div>
 
-        {/* Bill amount */}
         <div className="bg-white rounded-2xl p-5 border border-cream shadow-sm">
           <label className="text-xs text-brown/60 font-medium mb-2 block">Nominal Tagihan</label>
           <div className="flex items-center gap-2">
@@ -175,7 +221,6 @@ export default function CashierPage() {
           )}
         </div>
 
-        {/* Summary */}
         {bill > 0 && validAddress && (
           <div className="bg-latte rounded-2xl p-5 border border-cream">
             <div className="flex items-center gap-2 mb-3">
@@ -184,7 +229,7 @@ export default function CashierPage() {
             </div>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-brown/70">Pelanggan</span>
-              <span className="font-mono text-xs text-espresso">{customerAddress.slice(0, 10)}…</span>
+              <span className="font-mono text-xs text-espresso">{customerAddress.slice(0, 10)}...</span>
             </div>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-brown/70">Tagihan</span>
@@ -203,7 +248,7 @@ export default function CashierPage() {
           className="bg-espresso text-white rounded-2xl py-4 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isPending && <Loader2 size={18} className="animate-spin" />}
-          {isPending ? "Memproses…" : "Berikan Poin"}
+          {isPending ? "Memproses..." : "Berikan Poin"}
         </button>
       </div>
     </div>
