@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { toast } from "sonner";
-import { ChevronLeft, CheckCircle, Info, Coins, Loader2, Shield, MapPin, ScanLine, CameraOff } from "lucide-react";
+import { ChevronLeft, CheckCircle, Coins, Loader2, Shield, MapPin, ScanLine, CameraOff } from "lucide-react";
 import Link from "next/link";
 import { KOPILOYALTY_ABI, KOPILOYALTY_ADDRESS, CAFE_ID, CAFE_NAME, CAFE_LOCATION, BURN_RATE_IDR } from "@/lib/cafeConfig";
 import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
@@ -311,14 +311,6 @@ export default function PaymentPage() {
               <p className="text-xs text-mocha mt-2">Scan first, then use points for the scanned cafe.</p>
             </div>
           )}
-        </div>
-
-        <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-2xl p-4 flex items-start gap-3">
-          <Info size={15} className="text-[#F9A825] mt-0.5 shrink-0" />
-          <p className="text-xs text-[#7B6000] leading-relaxed">
-            <span className="font-semibold">Flow revision applied.</span>
-            {" "}Customers now scan the merchant QR, send a payment session to cashier, then optionally redeem points from this screen.
-          </p>
         </div>
 
         {merchantQr && canRedeemForScannedCafe && isConnected && (
