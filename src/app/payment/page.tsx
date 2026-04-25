@@ -37,6 +37,7 @@ export default function PaymentPage() {
   const [merchantQr, setMerchantQr] = useState<MerchantQrPayload | null>(null);
   const [session, setSession] = useState<PaymentSessionRow | null>(null);
   const [sessionPending, setSessionPending] = useState(false);
+  const [scanDebug, setScanDebug] = useState<string | null>(null);
 
   useEffect(() => {
     return () => stopScanner();
@@ -88,6 +89,7 @@ export default function PaymentPage() {
     stopScanner();
     setScannerState("starting");
     setScannerError(null);
+    setScanDebug(null);
 
     try {
       const [{ QRCanvas, frontalCamera }] = await Promise.all([import("qr/dom.js")]);
@@ -106,25 +108,33 @@ export default function PaymentPage() {
 
   async function captureScan() {
     if (!cameraRef.current || !canvasRef.current) {
-      toast.error("Start the camera first.");
+      const rawError = "camera_not_started";
+      setScannerError(rawError);
       return;
     }
 
-    const raw = cameraRef.current.readFrame(canvasRef.current);
-    if (!raw) {
-      toast.error("Could not read QR. Center it and try again.");
-      return;
-    }
+    try {
+      const raw = cameraRef.current.readFrame(canvasRef.current);
+      setScanDebug(raw ?? "readFrame returned undefined");
 
-    const payload = parseMerchantQrPayload(raw);
-    if (!payload) {
-      toast.error("QR not recognized. Try again.");
-      return;
-    }
+      if (!raw) {
+        setScannerError("readFrame returned undefined");
+        return;
+      }
 
-    setMerchantQr(payload);
-    toast.success(`Scanned cafe ID ${payload.cafeId}.`);
-    stopScanner();
+      const payload = parseMerchantQrPayload(raw);
+      if (!payload) {
+        setScannerError(`invalid_payload: ${raw.slice(0, 120)}`);
+        return;
+      }
+
+      setMerchantQr(payload);
+      toast.success(`Scanned cafe ID ${payload.cafeId}.`);
+      stopScanner();
+    } catch (error) {
+      const rawError = error instanceof Error ? error.message : String(error);
+      setScannerError(rawError);
+    }
   }
 
   function clearScan() {
@@ -309,7 +319,17 @@ export default function PaymentPage() {
           </div>
 
           {scannerError && (
-            <p className="text-xs text-red-500 mt-2">{scannerError}</p>
+            <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <p className="text-2xs font-semibold text-red-600 mb-1">Raw scan error</p>
+              <p className="text-xs text-red-700 font-mono break-all">{scannerError}</p>
+            </div>
+          )}
+
+          {scanDebug && !scannerError && (
+            <div className="mt-2 rounded-xl border border-cream bg-latte px-3 py-2">
+              <p className="text-2xs font-semibold text-mocha mb-1">Last decoder output</p>
+              <p className="text-xs text-espresso font-mono break-all">{scanDebug}</p>
+            </div>
           )}
         </div>
 
