@@ -11,6 +11,7 @@ import { parseContractError, KopiErrorCode } from "@/utils/contractErrors";
 import { OperatorGate } from "@/components/OperatorGate";
 import { useOperatorAccess } from "@/hooks/useOperatorAccess";
 import { CAFE_LOCATION, CAFE_NAME } from "@/lib/cafeConfig";
+import { OPERATOR_ADDRESS } from "@/lib/operator";
 
 export default function AdminPage() {
   const publicClient = usePublicClient();
@@ -58,6 +59,7 @@ export default function AdminPage() {
       isConnected={isConnected}
       isLoading={isLoading}
       isOwner={isOwner}
+      operatorAddress={OPERATOR_ADDRESS}
       ownerAddress={ownerAddress}
       title="Admin Panel"
       description="Connect wallet owner cafe untuk membuka pengaturan operator."

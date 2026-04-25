@@ -7,6 +7,7 @@ type OperatorGateProps = {
   isConnected: boolean;
   isLoading: boolean;
   isOwner: boolean;
+  operatorAddress?: string;
   ownerAddress?: string;
   title: string;
   description: string;
@@ -17,6 +18,7 @@ export function OperatorGate({
   isConnected,
   isLoading,
   isOwner,
+  operatorAddress,
   ownerAddress,
   title,
   description,
@@ -64,6 +66,11 @@ export function OperatorGate({
           {ownerAddress && (
             <p className="text-xs text-mocha/70 mt-3 font-mono">
               Owner: {ownerAddress.slice(0, 10)}...{ownerAddress.slice(-6)}
+            </p>
+          )}
+          {operatorAddress && (
+            <p className="text-xs text-mocha/70 mt-1 font-mono">
+              Allowed: {operatorAddress.slice(0, 10)}...{operatorAddress.slice(-6)}
             </p>
           )}
         </div>

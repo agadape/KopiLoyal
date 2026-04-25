@@ -18,6 +18,7 @@ import { CAFE_LOCATION, CAFE_NAME } from "@/lib/cafeConfig";
 import { createMerchantQrPayload, serializeMerchantQrPayload } from "@/lib/merchantQr";
 import { OperatorGate } from "@/components/OperatorGate";
 import { useOperatorAccess } from "@/hooks/useOperatorAccess";
+import { OPERATOR_ADDRESS } from "@/lib/operator";
 
 const EARN_RATE = 1000;
 
@@ -177,6 +178,7 @@ export default function CashierPage() {
       isConnected={isConnected}
       isLoading={isLoading}
       isOwner={isOwner}
+      operatorAddress={OPERATOR_ADDRESS}
       ownerAddress={ownerAddress}
       title="Mode Kasir"
       description="Connect wallet owner cafe untuk membuka mode kasir."
