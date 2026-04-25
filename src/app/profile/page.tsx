@@ -59,6 +59,8 @@ export default function ProfilePage() {
     query: { enabled: isConnected && !!address && !!pointsTokenId },
   });
 
+  const badges = claimedBadges ? Number(claimedBadges) : 0;
+
   const canClaimRefund = Boolean(refundClaimable && balance && balance > 0);
 
   function getBadgeTokenId(tier: number) {
